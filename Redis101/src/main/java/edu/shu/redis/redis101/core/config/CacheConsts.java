@@ -5,5 +5,7 @@ public interface CacheConsts {
 
     String DUMMY_CACHE_101 = "dummyCache101";
 
+    String DUMMY_CACHE_102 = "dummyCache102";
+
     String CACHE_MAPS_PREDICTIONS_KEY = "{#input, #countryIsoCode, #limit}";
 }
