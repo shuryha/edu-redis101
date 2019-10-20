@@ -16,10 +16,12 @@ import org.springframework.data.redis.core.RedisTemplate;
 
 import java.lang.invoke.MethodHandles;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 @Configuration
 @EnableCaching
-@PropertySource(ignoreResourceNotFound = true, value = "classpath:redis.properties")
+@PropertySource(ignoreResourceNotFound = true, value = "classpath:cache-redis.properties")
 public class RedisConfig {
 
     private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -38,6 +40,9 @@ public class RedisConfig {
 
     @Value("${runtime.cache.redis.prefix}")
     private String redisPrefix;
+
+    @Value("#{${runtime.cache.redis.cacheTtls}}")
+    private Map<String, Long> cacheTtls = new HashMap<>();
 
     @Bean
     JedisConnectionFactory jedisConnectionFactory() {
@@ -64,24 +69,26 @@ public class RedisConfig {
 
     @Bean(name = CacheConsts.CACHE_MANAGER_BEAN_NAME)
     @Profile("dev-redis")
-    public CacheManager cacheManagerDevMins(RedisConnectionFactory redisConnectionFactory) {
-        final Duration expiration = Duration.ofMinutes(cacheTTL);
-        return createCacheManager(redisConnectionFactory, redisPrefix, expiration);
-    }
-
-    @Bean(name = CacheConsts.CACHE_MANAGER_BEAN_NAME)
-    @Profile("prod")
-    public CacheManager cacheManagerProdHours(RedisConnectionFactory redisConnectionFactory) {
-        final Duration expiration = Duration.ofHours(cacheTTL);
-        return createCacheManager(redisConnectionFactory, redisPrefix, expiration);
+    public CacheManager cacheManagerDevLocal(RedisConnectionFactory redisConnectionFactory) {
+        final Duration expiration = Duration.ofSeconds(cacheTTL);
+        return createCacheManager(redisConnectionFactory, expiration);
     }
 
     /* Creates cache manager based on params provided */
-    private CacheManager createCacheManager(final RedisConnectionFactory redisConnectionFactory,
-                                            final String redisPrefix, final Duration expiration) {
+    private CacheManager createCacheManager(final RedisConnectionFactory redisConnectionFactory, final Duration expiration) {
+        final Map<String, RedisCacheConfiguration> cacheConfigs = new HashMap<>();
+        for (Map.Entry<String, Long> cacheNameAndTimeout : cacheTtls.entrySet()) {
+            cacheConfigs.put(cacheNameAndTimeout.getKey(),
+                    RedisCacheConfiguration.defaultCacheConfig().entryTtl(Duration.ofSeconds(cacheNameAndTimeout.getValue())));
+        }
         return RedisCacheManager.builder(redisConnectionFactory)
                 .cacheDefaults(
-                        RedisCacheConfiguration.defaultCacheConfig().prefixKeysWith(redisPrefix).entryTtl(expiration))
+                        RedisCacheConfiguration
+                                .defaultCacheConfig()
+                                .prefixKeysWith(redisPrefix)
+                                .entryTtl(expiration))
+                .withInitialCacheConfigurations(cacheConfigs)
+                .transactionAware()
                 .build();
     }
 }
